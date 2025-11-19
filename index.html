@@ -32,22 +32,19 @@ label { display:flex; align-items:center; gap:6px; margin:8px 0; }
     <button onclick="login()">Login</button>
   </div>
 </div>
+
 <!-- USER MANAGEMENT MODAL -->
 <div id="userModal" class="modal">
   <div class="modal-box">
     <h3>Benutzer verwalten</h3>
-
     <input type="text" id="newUsername" placeholder="Benutzername">
     <input type="text" id="newPassword" placeholder="Passwort">
     <button onclick="addUser()">Benutzer hinzufügen</button>
-
     <h4>Existierende Benutzer:</h4>
     <ul id="userList"></ul>
-
     <button class="cancel" onclick="closeUserModal()">Schließen</button>
   </div>
 </div>
-
 
 <!-- ADD APPOINTMENT MODAL -->
 <div id="addModal" class="modal">
@@ -77,7 +74,27 @@ label { display:flex; align-items:center; gap:6px; margin:8px 0; }
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+// Your Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyCuJ4dfirEH1Zsi6YaczAKX1MA4u1CA8Ws",
+  authDomain: "drpauer-kalender.firebaseapp.com",
+  projectId: "drpauer-kalender",
+  storageBucket: "drpauer-kalender.firebasestorage.app",
+  messagingSenderId: "456808707146",
+  appId: "1:456808707146:web:257450b59ddb232233a2b3"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const appointmentsCol = collection(db, "appointments");
+
 let calendar;
 let slotStart = null;
 let activeEvent = null;
@@ -87,72 +104,27 @@ let currentUser = null;
 const users = { 'max':'123', 'anna':'abc' };
 const bossUser = { username: 'p.auer', password: 'boss123' };
 
-// Save appointments to localStorage
-function saveToLocalStorage() {
-  const events = calendar.getEvents().map(ev => ({
-    title: ev.title,
-    start: ev.start.toISOString(),
-    end: ev.end.toISOString(),
-    extendedProps: ev.extendedProps
-  }));
-  localStorage.setItem('appointments', JSON.stringify(events));
+// ----- LOGIN -----
+function login() {
+  const u = document.getElementById("loginUser").value.trim();
+  const p = document.getElementById("loginPass").value.trim();
+
+  if(u === bossUser.username && p === bossUser.password){
+    currentUser = 'boss';
+    document.getElementById("loginModal").style.display="none";
+    alert("Willkommen, Boss! Du kannst Benutzer verwalten.");
+    openUserManagementModal();
+    return;
+  }
+
+  if(users[u] && users[u]===p) {
+    currentUser=u;
+    document.getElementById("loginModal").style.display="none";
+    alert("Willkommen, "+currentUser+"!");
+  } else alert("Falscher Benutzername oder Passwort!");
 }
 
-// Update event colors
-function updateEventColors() {
-  const now = new Date();
-  calendar.getEvents().forEach(ev => {
-    const isPast = ev.end < now;
-    const came = ev.extendedProps.gekommen;
-    if(isPast && !came){
-      ev.setProp("backgroundColor", "#ff4d4d"); // RED
-      ev.setProp("borderColor", "#ff0000");
-    } else if(isPast && came){
-      ev.setProp("backgroundColor", "#4caf50"); // GREEN
-      ev.setProp("borderColor", "#2e7d32");
-    } else {
-      ev.setProp("backgroundColor", "#1976d2"); // BLUE upcoming
-      ev.setProp("borderColor", "#115293");
-    }
-  });
-}
-
-// Load appointments
-function loadFromLocalStorage() {
-  const saved = JSON.parse(localStorage.getItem('appointments') || "[]");
-  saved.forEach(ev => {
-    calendar.addEvent({
-      title: ev.title,
-      start: new Date(ev.start),
-      end: new Date(ev.end),
-      extendedProps: ev.extendedProps
-    });
-  });
-  updateEventColors();
-}
-
-/* ----- LOGIN ----- */
-    function login() {
-      const u = document.getElementById("loginUser").value.trim();
-      const p = document.getElementById("loginPass").value.trim();
-
-      if(u === bossUser.username && p === bossUser.password){
-        currentUser = 'boss';
-        document.getElementById("loginModal").style.display="none";
-        alert("Willkommen, Boss! Du kannst Benutzer verwalten.");
-        openUserManagementModal();
-        return;
-      }
-
-      if(users[u] && users[u]===p) {
-        currentUser=u;
-        document.getElementById("loginModal").style.display="none";
-        alert("Willkommen, "+currentUser+"!");
-      } else alert("Falscher Benutzername oder Passwort!");
-    }
-
-
-/* ----- MODALS ----- */
+// ----- MODALS -----
 function openAddModal() { document.getElementById("addModal").style.display="flex"; }
 function closeAddModal() {
   document.getElementById("addModal").style.display="none";
@@ -162,7 +134,7 @@ function closeAddModal() {
   document.getElementById("addCame").checked=false;
 }
 
-function saveAppointment() {
+async function saveAppointment() {
   if(!currentUser){ alert("Bitte einloggen!"); return; }
 
   const came = document.getElementById("addCame").checked;
@@ -176,16 +148,27 @@ function saveAppointment() {
   const start = new Date(slotStart.getTime());
   const end = new Date(start.getTime()+15*60000);
 
-  calendar.addEvent({
-      title: `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${currentUser}, Geändert von: ${currentUser})`,
-
-    start, end,
+  const eventData = {
+    title: `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${currentUser}, Geändert von: ${currentUser})`,
+    start: start.toISOString(),
+    end: end.toISOString(),
     extendedProps: { patient:name, reason:reason, comment:comment, gekommen:came, createdBy:currentUser, editedBy:currentUser }
-  });
+  };
 
-  saveToLocalStorage();
-  updateEventColors();
-  closeAddModal();
+  try {
+    const docRef = await addDoc(appointmentsCol, eventData);
+    eventData.id = docRef.id;
+    calendar.addEvent({
+      ...eventData,
+      start: start,
+      end: end
+    });
+    updateEventColors();
+    closeAddModal();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler beim Speichern des Termins!");
+  }
 }
 
 function openEditModal(event){
@@ -200,7 +183,7 @@ function openEditModal(event){
 
 function closeEditModal(){ document.getElementById("editModal").style.display="none"; activeEvent=null; }
 
-function applyEdit(){
+async function applyEdit(){
   const name = document.getElementById("editName").value.trim();
   const reason = document.getElementById("editReason").value.trim();
   const comment = document.getElementById("editComment").value.trim();
@@ -209,82 +192,127 @@ function applyEdit(){
   if(!name || !reason) return alert("Bitte alles ausfüllen!");
 
   activeEvent.setProp("title", `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${activeEvent.extendedProps.createdBy}, Geändert von: ${currentUser})`);
-
   activeEvent.setExtendedProp("patient", name);
   activeEvent.setExtendedProp("reason", reason);
   activeEvent.setExtendedProp("comment", comment);
   activeEvent.setExtendedProp("gekommen", came);
   activeEvent.setExtendedProp("editedBy", currentUser);
 
-  saveToLocalStorage();
-  updateEventColors();
-  closeEditModal();
+  try {
+    const docRef = doc(db, "appointments", activeEvent.extendedProps.id);
+    await updateDoc(docRef, {
+      title: activeEvent.title,
+      extendedProps: activeEvent.extendedProps,
+      start: activeEvent.start.toISOString(),
+      end: activeEvent.end.toISOString()
+    });
+    updateEventColors();
+    closeEditModal();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler beim Bearbeiten des Termins!");
+  }
 }
-    function openUserManagementModal(){
-      updateUserList();
-      document.getElementById("userModal").style.display="flex";
+
+// ----- USER MANAGEMENT -----
+function openUserManagementModal(){
+  updateUserList();
+  document.getElementById("userModal").style.display="flex";
+}
+function closeUserModal(){
+  document.getElementById("userModal").style.display="none";
+  document.getElementById("newUsername").value='';
+  document.getElementById("newPassword").value='';
+}
+function addUser(){
+  const username = document.getElementById("newUsername").value.trim();
+  const password = document.getElementById("newPassword").value.trim();
+  if(!username || !password) return alert("Bitte Benutzername und Passwort eingeben!");
+  if(users[username]) return alert("Benutzer existiert bereits!");
+  users[username] = password;
+  alert("Benutzer erfolgreich hinzugefügt!");
+  document.getElementById("newUsername").value='';
+  document.getElementById("newPassword").value='';
+  updateUserList();
+}
+function updateUserList(){
+  const list = document.getElementById("userList");
+  list.innerHTML = '';
+  for(let u in users){
+    const li = document.createElement("li");
+    li.textContent = u + " ";
+    const btn = document.createElement("button");
+    btn.textContent = "Löschen";
+    btn.style.marginLeft = "10px";
+    btn.onclick = () => removeUser(u);
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+}
+function removeUser(username){
+  if(username === 'boss') { alert("Boss kann nicht gelöscht werden!"); return; }
+  if(confirm(`Benutzer ${username} wirklich löschen?`)){
+    delete users[username];
+    updateUserList();
+    alert("Benutzer gelöscht!");
+  }
+}
+
+// ----- DELETE EVENT -----
+async function deleteEvent(){
+  if(activeEvent.extendedProps.createdBy !== currentUser){
+    alert("Nur der Ersteller kann diesen Termin löschen!");
+    return;
+  }
+  if(!confirm("Termin wirklich löschen?")) return;
+
+  try {
+    const docRef = doc(db, "appointments", activeEvent.extendedProps.id);
+    await deleteDoc(docRef);
+    activeEvent.remove();
+    updateEventColors();
+    closeEditModal();
+  } catch(err) {
+    console.error(err);
+    alert("Fehler beim Löschen des Termins!");
+  }
+}
+
+// ----- CALENDAR -----
+function updateEventColors() {
+  const now = new Date();
+  calendar.getEvents().forEach(ev => {
+    const isPast = ev.end < now;
+    const came = ev.extendedProps.gekommen;
+    if(isPast && !came){
+      ev.setProp("backgroundColor", "#ff4d4d");
+      ev.setProp("borderColor", "#ff0000");
+    } else if(isPast && came){
+      ev.setProp("backgroundColor", "#4caf50");
+      ev.setProp("borderColor", "#2e7d32");
+    } else {
+      ev.setProp("backgroundColor", "#1976d2");
+      ev.setProp("borderColor", "#115293");
     }
+  });
+}
 
-    function closeUserModal(){
-      document.getElementById("userModal").style.display="none";
-      document.getElementById("newUsername").value='';
-      document.getElementById("newPassword").value='';
-    }
+function loadAppointments() {
+  onSnapshot(appointmentsCol, (snapshot) => {
+    calendar.getEvents().forEach(e => e.remove());
+    snapshot.forEach(docSnap => {
+      const ev = docSnap.data();
+      ev.id = docSnap.id;
+      calendar.addEvent({
+        ...ev,
+        start: new Date(ev.start),
+        end: new Date(ev.end)
+      });
+    });
+    updateEventColors();
+  });
+}
 
-    // Add a new user
-    function addUser(){
-      const username = document.getElementById("newUsername").value.trim();
-      const password = document.getElementById("newPassword").value.trim();
-      if(!username || !password) return alert("Bitte Benutzername und Passwort eingeben!");
-      if(users[username]) return alert("Benutzer existiert bereits!");
-      users[username] = password;
-      alert("Benutzer erfolgreich hinzugefügt!");
-      document.getElementById("newUsername").value='';
-      document.getElementById("newPassword").value='';
-      updateUserList();
-    }
-
-    // Update the user list with delete buttons
-    function updateUserList(){
-      const list = document.getElementById("userList");
-      list.innerHTML = '';
-      for(let u in users){
-        const li = document.createElement("li");
-        li.textContent = u + " ";
-        const btn = document.createElement("button");
-        btn.textContent = "Löschen";
-        btn.style.marginLeft = "10px";
-        btn.onclick = () => removeUser(u);
-        li.appendChild(btn);
-        list.appendChild(li);
-      }
-    }
-
-    // Remove a user
-    function removeUser(username){
-      if(username === 'boss') { alert("Boss kann nicht gelöscht werden!"); return; }
-      if(confirm(`Benutzer ${username} wirklich löschen?`)){
-        delete users[username];
-        updateUserList();
-        alert("Benutzer gelöscht!");
-      }
-    }
-
-
-    function deleteEvent(){
-        
-      if(activeEvent.extendedProps.createdBy !== currentUser){
-        alert("Nur der Ersteller kann diesen Termin löschen!");
-        return;
-      }
-      if(!confirm("Termin wirklich löschen?")) return;
-      activeEvent.remove();
-      saveToLocalStorage();
-      updateEventColors();
-      closeEditModal();
-    }
-
-/* ----- CALENDAR ----- */
 document.addEventListener("DOMContentLoaded", function() {
   document.getElementById("loginModal").style.display="flex";
 
@@ -324,7 +352,6 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     },
 
-    // Tooltip shows created/edited/comment
     eventDidMount: function(info) {
       const ev = info.event;
       const createdBy = ev.extendedProps.createdBy || '';
@@ -333,16 +360,15 @@ document.addEventListener("DOMContentLoaded", function() {
       if(ev.extendedProps.comment) tooltip += `\nKommentar: ${ev.extendedProps.comment}`;
       info.el.setAttribute('title', tooltip);
 
-      // Add colored dot in month view
       if(calendar.view.type === "dayGridMonth"){
         const dot = document.createElement('span');
         dot.className = 'fc-event-dot';
         const now = new Date();
         const isPast = ev.end < now;
         const came = ev.extendedProps.gekommen;
-        if(isPast && !came) dot.style.backgroundColor = "#ff4d4d"; // missed
-        else if(isPast && came) dot.style.backgroundColor = "#4caf50"; // came
-        else dot.style.backgroundColor = "#1976d2"; // upcoming
+        if(isPast && !came) dot.style.backgroundColor = "#ff4d4d";
+        else if(isPast && came) dot.style.backgroundColor = "#4caf50";
+        else dot.style.backgroundColor = "#1976d2";
         info.el.prepend(dot);
       }
     },
@@ -353,9 +379,8 @@ document.addEventListener("DOMContentLoaded", function() {
     allDaySlot: false
   });
 
-  loadFromLocalStorage();
+  loadAppointments();
 
-  // Update colors every minute
   setInterval(updateEventColors, 60000);
 
   calendar.render();
