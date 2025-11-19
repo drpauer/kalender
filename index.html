@@ -9,10 +9,12 @@
 body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
 #calendar { max-width: 1000px; margin: 40px auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
 .modal { position: fixed; top:0; left:0; right:0; bottom:0; display: none; justify-content: center; align-items: center; background: rgba(0,0,0,0.5); z-index: 9999; }
-.modal-box { background:white; padding:20px; width:380px; border-radius:12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-input { width: 98%; margin: 8px 0; padding: 8px; }
+.modal-box { background:white; padding:20px; width:400px; border-radius:12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+input { width: 95%; margin: 8px 0; padding: 8px; }
 button { margin-top: 10px; padding: 10px; width: 100%; background: #1976d2; color:white; border:none; border-radius:6px; cursor:pointer; }
 button.cancel { background: #777; }
+label { display:flex; align-items:center; gap:6px; margin:8px 0; }
+.fc-event-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:5px; }
 </style>
 </head>
 <body>
@@ -30,13 +32,31 @@ button.cancel { background: #777; }
     <button onclick="login()">Login</button>
   </div>
 </div>
+<!-- USER MANAGEMENT MODAL -->
+<div id="userModal" class="modal">
+  <div class="modal-box">
+    <h3>Benutzer verwalten</h3>
+
+    <input type="text" id="newUsername" placeholder="Benutzername">
+    <input type="text" id="newPassword" placeholder="Passwort">
+    <button onclick="addUser()">Benutzer hinzufügen</button>
+
+    <h4>Existierende Benutzer:</h4>
+    <ul id="userList"></ul>
+
+    <button class="cancel" onclick="closeUserModal()">Schließen</button>
+  </div>
+</div>
+
 
 <!-- ADD APPOINTMENT MODAL -->
 <div id="addModal" class="modal">
   <div class="modal-box">
     <h3>Neuen Termin hinzufügen</h3>
-    <input type="text" id="patientName" placeholder="Patientenname">
-    <input type="text" id="reason" placeholder="Grund des Besuchs">
+    <label><input type="checkbox" id="addCame"> Gekommen</label>
+    <input type="text" id="patientName" placeholder="Patientenname (Pflicht)">
+    <input type="text" id="reason" placeholder="Grund des Besuchs (Pflicht)">
+    <input type="text" id="comment" placeholder="Kommentar (optional)">
     <button onclick="saveAppointment()">Speichern</button>
     <button class="cancel" onclick="closeAddModal()">Abbrechen</button>
   </div>
@@ -46,8 +66,10 @@ button.cancel { background: #777; }
 <div id="editModal" class="modal">
   <div class="modal-box">
     <h3>Termin bearbeiten</h3>
-    <input type="text" id="editName">
-    <input type="text" id="editReason">
+    <label><input type="checkbox" id="editCame"> Gekommen</label>
+    <input type="text" id="editName" placeholder="Patientenname">
+    <input type="text" id="editReason" placeholder="Grund des Besuchs">
+    <input type="text" id="editComment" placeholder="Kommentar (optional)">
     <button onclick="applyEdit()">Änderungen speichern</button>
     <button onclick="deleteEvent()" style="background:#d32f2f">Löschen</button>
     <button class="cancel" onclick="closeEditModal()">Abbrechen</button>
@@ -63,6 +85,7 @@ let currentUser = null;
 
 // Hardcoded users
 const users = { 'max':'123', 'anna':'abc' };
+const bossUser = { username: 'p.auer', password: 'boss123' };
 
 // Save appointments to localStorage
 function saveToLocalStorage() {
@@ -73,6 +96,25 @@ function saveToLocalStorage() {
     extendedProps: ev.extendedProps
   }));
   localStorage.setItem('appointments', JSON.stringify(events));
+}
+
+// Update event colors
+function updateEventColors() {
+  const now = new Date();
+  calendar.getEvents().forEach(ev => {
+    const isPast = ev.end < now;
+    const came = ev.extendedProps.gekommen;
+    if(isPast && !came){
+      ev.setProp("backgroundColor", "#ff4d4d"); // RED
+      ev.setProp("borderColor", "#ff0000");
+    } else if(isPast && came){
+      ev.setProp("backgroundColor", "#4caf50"); // GREEN
+      ev.setProp("borderColor", "#2e7d32");
+    } else {
+      ev.setProp("backgroundColor", "#1976d2"); // BLUE upcoming
+      ev.setProp("borderColor", "#115293");
+    }
+  });
 }
 
 // Load appointments
@@ -86,74 +128,159 @@ function loadFromLocalStorage() {
       extendedProps: ev.extendedProps
     });
   });
+  updateEventColors();
 }
 
 /* ----- LOGIN ----- */
-function login() {
-  const u = document.getElementById("loginUser").value.trim();
-  const p = document.getElementById("loginPass").value.trim();
-  if(users[u] && users[u]===p) {
-    currentUser=u;
-    document.getElementById("loginModal").style.display="none";
-    alert("Willkommen, "+currentUser+"!");
-  } else alert("Falscher Benutzername oder Passwort!");
-}
+    function login() {
+      const u = document.getElementById("loginUser").value.trim();
+      const p = document.getElementById("loginPass").value.trim();
+
+      if(u === bossUser.username && p === bossUser.password){
+        currentUser = 'boss';
+        document.getElementById("loginModal").style.display="none";
+        alert("Willkommen, Boss! Du kannst Benutzer verwalten.");
+        openUserManagementModal();
+        return;
+      }
+
+      if(users[u] && users[u]===p) {
+        currentUser=u;
+        document.getElementById("loginModal").style.display="none";
+        alert("Willkommen, "+currentUser+"!");
+      } else alert("Falscher Benutzername oder Passwort!");
+    }
+
 
 /* ----- MODALS ----- */
 function openAddModal() { document.getElementById("addModal").style.display="flex"; }
-function closeAddModal() { document.getElementById("addModal").style.display="none"; document.getElementById("patientName").value=''; document.getElementById("reason").value=''; }
+function closeAddModal() {
+  document.getElementById("addModal").style.display="none";
+  document.getElementById("patientName").value='';
+  document.getElementById("reason").value='';
+  document.getElementById("comment").value='';
+  document.getElementById("addCame").checked=false;
+}
 
 function saveAppointment() {
   if(!currentUser){ alert("Bitte einloggen!"); return; }
-  const name=document.getElementById("patientName").value.trim();
-  const reason=document.getElementById("reason").value.trim();
-  if(!name || !reason) return alert("Bitte alles ausfüllen!");
+
+  const came = document.getElementById("addCame").checked;
+  const name = document.getElementById("patientName").value.trim();
+  const reason = document.getElementById("reason").value.trim();
+  const comment = document.getElementById("comment").value.trim();
+
+  if(!name || !reason) return alert("Bitte Name und Grund eingeben!");
   if(slotStart < new Date()) { alert("Vergangene Termine können nicht erstellt werden!"); return; }
 
-  const start=new Date(slotStart.getTime());
-  const end=new Date(start.getTime()+15*60000);
+  const start = new Date(slotStart.getTime());
+  const end = new Date(start.getTime()+15*60000);
 
   calendar.addEvent({
-    title: name+" – "+reason+` (Erstellt von: ${currentUser}, Geändert von: ${currentUser})`,
+      title: `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${currentUser}, Geändert von: ${currentUser})`,
+
     start, end,
-    extendedProps: { patient:name, reason:reason, createdBy:currentUser, editedBy:currentUser }
+    extendedProps: { patient:name, reason:reason, comment:comment, gekommen:came, createdBy:currentUser, editedBy:currentUser }
   });
 
-  saveToLocalStorage(); closeAddModal();
+  saveToLocalStorage();
+  updateEventColors();
+  closeAddModal();
 }
 
 function openEditModal(event){
   if(event.start < new Date()) { alert("Vergangene Termine können nicht bearbeitet werden!"); return; }
+  activeEvent = event;
   document.getElementById("editModal").style.display="flex";
-  document.getElementById("editName").value=event.extendedProps.patient;
-  document.getElementById("editReason").value=event.extendedProps.reason;
+  document.getElementById("editName").value = event.extendedProps.patient;
+  document.getElementById("editReason").value = event.extendedProps.reason;
+  document.getElementById("editComment").value = event.extendedProps.comment || "";
+  document.getElementById("editCame").checked = event.extendedProps.gekommen || false;
 }
 
 function closeEditModal(){ document.getElementById("editModal").style.display="none"; activeEvent=null; }
 
 function applyEdit(){
-  const name=document.getElementById("editName").value.trim();
-  const reason=document.getElementById("editReason").value.trim();
+  const name = document.getElementById("editName").value.trim();
+  const reason = document.getElementById("editReason").value.trim();
+  const comment = document.getElementById("editComment").value.trim();
+  const came = document.getElementById("editCame").checked;
+
   if(!name || !reason) return alert("Bitte alles ausfüllen!");
 
-  activeEvent.setProp("title", `${name} – ${reason} (Erstellt von: ${activeEvent.extendedProps.createdBy}, Geändert von: ${currentUser})`);
-  activeEvent.setExtendedProp("patient",name);
-  activeEvent.setExtendedProp("reason",reason);
-  activeEvent.setExtendedProp("editedBy",currentUser);
+  activeEvent.setProp("title", `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${activeEvent.extendedProps.createdBy}, Geändert von: ${currentUser})`);
 
-  saveToLocalStorage(); closeEditModal();
+  activeEvent.setExtendedProp("patient", name);
+  activeEvent.setExtendedProp("reason", reason);
+  activeEvent.setExtendedProp("comment", comment);
+  activeEvent.setExtendedProp("gekommen", came);
+  activeEvent.setExtendedProp("editedBy", currentUser);
+
+  saveToLocalStorage();
+  updateEventColors();
+  closeEditModal();
 }
+    function openUserManagementModal(){
+      updateUserList();
+      document.getElementById("userModal").style.display="flex";
+    }
+
+    function closeUserModal(){
+      document.getElementById("userModal").style.display="none";
+      document.getElementById("newUsername").value='';
+      document.getElementById("newPassword").value='';
+    }
+
+    // Add a new user
+    function addUser(){
+      const username = document.getElementById("newUsername").value.trim();
+      const password = document.getElementById("newPassword").value.trim();
+      if(!username || !password) return alert("Bitte Benutzername und Passwort eingeben!");
+      if(users[username]) return alert("Benutzer existiert bereits!");
+      users[username] = password;
+      alert("Benutzer erfolgreich hinzugefügt!");
+      document.getElementById("newUsername").value='';
+      document.getElementById("newPassword").value='';
+      updateUserList();
+    }
+
+    // Update the user list with delete buttons
+    function updateUserList(){
+      const list = document.getElementById("userList");
+      list.innerHTML = '';
+      for(let u in users){
+        const li = document.createElement("li");
+        li.textContent = u + " ";
+        const btn = document.createElement("button");
+        btn.textContent = "Löschen";
+        btn.style.marginLeft = "10px";
+        btn.onclick = () => removeUser(u);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    }
+
+    // Remove a user
+    function removeUser(username){
+      if(username === 'boss') { alert("Boss kann nicht gelöscht werden!"); return; }
+      if(confirm(`Benutzer ${username} wirklich löschen?`)){
+        delete users[username];
+        updateUserList();
+        alert("Benutzer gelöscht!");
+      }
+    }
+
 
     function deleteEvent(){
-      // Only creator can delete
+        
       if(activeEvent.extendedProps.createdBy !== currentUser){
-        alert("Du kannst nur Termine löschen, die du selbst erstellt hast.");
+        alert("Nur der Ersteller kann diesen Termin löschen!");
         return;
       }
-
       if(!confirm("Termin wirklich löschen?")) return;
       activeEvent.remove();
       saveToLocalStorage();
+      updateEventColors();
       closeEditModal();
     }
 
@@ -168,15 +295,13 @@ document.addEventListener("DOMContentLoaded", function() {
     weekends: false,
     headerToolbar: { left:"prev,next today", center:"title", right:"dayGridMonth,timeGridWeek,timeGridDay" },
     buttonText: { today:"Aktuell", month:"Monat", week:"Woche", day:"Tag" },
-    selectable: false, // default false
+    selectable: false,
 
-    // Month view: click day -> go to day view (do NOT open modal)
     dateClick: function(info) {
       if(!currentUser) { alert("Bitte zuerst einloggen!"); return; }
       calendar.changeView('timeGridDay', info.dateStr);
     },
 
-    // Enable selection only in day/week views
     viewDidMount: function(info) {
       if(info.view.type === "timeGridDay" || info.view.type === "timeGridWeek") {
         calendar.setOption('selectable', true);
@@ -194,9 +319,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
     eventClick: function(info) {
       if(!currentUser) { alert("Bitte zuerst einloggen!"); return; }
-      activeEvent = info.event;
       if(calendar.view.type !== 'dayGridMonth') {
         openEditModal(info.event);
+      }
+    },
+
+    // Tooltip shows created/edited/comment
+    eventDidMount: function(info) {
+      const ev = info.event;
+      const createdBy = ev.extendedProps.createdBy || '';
+      const editedBy = ev.extendedProps.editedBy || '';
+      let tooltip = `Erstellt von: ${createdBy}\nGeändert von: ${editedBy}`;
+      if(ev.extendedProps.comment) tooltip += `\nKommentar: ${ev.extendedProps.comment}`;
+      info.el.setAttribute('title', tooltip);
+
+      // Add colored dot in month view
+      if(calendar.view.type === "dayGridMonth"){
+        const dot = document.createElement('span');
+        dot.className = 'fc-event-dot';
+        const now = new Date();
+        const isPast = ev.end < now;
+        const came = ev.extendedProps.gekommen;
+        if(isPast && !came) dot.style.backgroundColor = "#ff4d4d"; // missed
+        else if(isPast && came) dot.style.backgroundColor = "#4caf50"; // came
+        else dot.style.backgroundColor = "#1976d2"; // upcoming
+        info.el.prepend(dot);
       }
     },
 
@@ -207,6 +354,10 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   loadFromLocalStorage();
+
+  // Update colors every minute
+  setInterval(updateEventColors, 60000);
+
   calendar.render();
 });
 </script>
