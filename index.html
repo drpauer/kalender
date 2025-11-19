@@ -13,7 +13,7 @@ body { font-family: Arial, sans-serif; background: #f0f0f0; padding: 20px; }
 input { width: 95%; margin: 8px 0; padding: 8px; }
 button { margin-top: 10px; padding: 10px; width: 100%; background: #1976d2; color:white; border:none; border-radius:6px; cursor:pointer; }
 button.cancel { background: #777; }
-label { display:inline-flex; align-items:center; gap:4px; margin:8px 0; cursor:pointer; }
+label { display:flex; align-items:center; gap:6px; margin:8px 0; }
 .fc-event-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:5px; }
 </style>
 </head>
@@ -37,11 +37,14 @@ label { display:inline-flex; align-items:center; gap:4px; margin:8px 0; cursor:p
 <div id="userModal" class="modal">
   <div class="modal-box">
     <h3>Benutzer verwalten</h3>
+
     <input type="text" id="newUsername" placeholder="Benutzername">
     <input type="text" id="newPassword" placeholder="Passwort">
     <button onclick="addUser()">Benutzer hinzufügen</button>
+
     <h4>Existierende Benutzer:</h4>
     <ul id="userList"></ul>
+
     <button class="cancel" onclick="closeUserModal()">Schließen</button>
   </div>
 </div>
@@ -50,7 +53,7 @@ label { display:inline-flex; align-items:center; gap:4px; margin:8px 0; cursor:p
 <div id="addModal" class="modal">
   <div class="modal-box">
     <h3>Neuen Termin hinzufügen</h3>
-    <label for="addCame"><input type="checkbox" id="addCame">Gekommen</label>
+    <label><input type="checkbox" id="addCame"> Gekommen</label>
     <input type="text" id="patientName" placeholder="Patientenname (Pflicht)">
     <input type="text" id="reason" placeholder="Grund des Besuchs (Pflicht)">
     <input type="text" id="comment" placeholder="Kommentar (optional)">
@@ -63,7 +66,7 @@ label { display:inline-flex; align-items:center; gap:4px; margin:8px 0; cursor:p
 <div id="editModal" class="modal">
   <div class="modal-box">
     <h3>Termin bearbeiten</h3>
-    <label for="editCame"><input type="checkbox" id="editCame">Gekommen</label>
+    <label><input type="checkbox" id="editCame"> Gekommen</label>
     <input type="text" id="editName" placeholder="Patientenname">
     <input type="text" id="editReason" placeholder="Grund des Besuchs">
     <input type="text" id="editComment" placeholder="Kommentar (optional)">
@@ -73,12 +76,12 @@ label { display:inline-flex; align-items:center; gap:4px; margin:8px 0; cursor:p
   </div>
 </div>
 
-<!-- Firebase SDK -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js";
-import { getDatabase, ref, set, push, onValue, get } from "https://www.gstatic.com/firebasejs/10.6.0/firebase-database.js";
-
-// Firebase config
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script>
+// --- Firebase Config ---
 const firebaseConfig = {
   apiKey: "AIzaSyCuJ4dfirEH1Zsi6YaczAKX1MA4u1CA8Ws",
   authDomain: "drpauer-kalender.firebaseapp.com",
@@ -88,13 +91,9 @@ const firebaseConfig = {
   messagingSenderId: "456808707146",
   appId: "1:456808707146:web:257450b59ddb232233a2b3"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script>
 let calendar;
 let slotStart = null;
 let activeEvent = null;
@@ -104,29 +103,11 @@ let currentUser = null;
 const users = { 'max':'123', 'anna':'abc' };
 const bossUser = { username: 'p.auer', password: 'boss123' };
 
-/* ----- LOCAL FUNCTIONS ----- */
-function updateEventColors() {
-  const now = new Date();
-  calendar.getEvents().forEach(ev => {
-    const isPast = ev.end < now;
-    const came = ev.extendedProps.gekommen;
-    if(isPast && !came){
-      ev.setProp("backgroundColor", "#ff4d4d");
-      ev.setProp("borderColor", "#ff0000");
-    } else if(isPast && came){
-      ev.setProp("backgroundColor", "#4caf50");
-      ev.setProp("borderColor", "#2e7d32");
-    } else {
-      ev.setProp("backgroundColor", "#1976d2");
-      ev.setProp("borderColor", "#115293");
-    }
-  });
-}
-
-/* ----- LOGIN ----- */
+// ----- LOGIN -----
 function login() {
   const u = document.getElementById("loginUser").value.trim();
   const p = document.getElementById("loginPass").value.trim();
+
   if(u === bossUser.username && p === bossUser.password){
     currentUser = 'boss';
     document.getElementById("loginModal").style.display="none";
@@ -134,22 +115,24 @@ function login() {
     openUserManagementModal();
     return;
   }
-  if(users[u] && users[u]===p){
-    currentUser = u;
+
+  if(users[u] && users[u]===p) {
+    currentUser=u;
     document.getElementById("loginModal").style.display="none";
     alert("Willkommen, "+currentUser+"!");
   } else alert("Falscher Benutzername oder Passwort!");
 }
 
-/* ----- MODALS ----- */
-function openAddModal(){ document.getElementById("addModal").style.display="flex"; }
-function closeAddModal(){
+// ----- MODALS -----
+function openAddModal() { document.getElementById("addModal").style.display="flex"; }
+function closeAddModal() {
   document.getElementById("addModal").style.display="none";
   document.getElementById("patientName").value='';
   document.getElementById("reason").value='';
   document.getElementById("comment").value='';
   document.getElementById("addCame").checked=false;
 }
+
 function openEditModal(event){
   if(event.start < new Date()) { alert("Vergangene Termine können nicht bearbeitet werden!"); return; }
   activeEvent = event;
@@ -159,9 +142,47 @@ function openEditModal(event){
   document.getElementById("editComment").value = event.extendedProps.comment || "";
   document.getElementById("editCame").checked = event.extendedProps.gekommen || false;
 }
+
 function closeEditModal(){ document.getElementById("editModal").style.display="none"; activeEvent=null; }
 
-/* ----- FIREBASE FUNCTIONS ----- */
+// ----- USERS -----
+function openUserManagementModal(){ updateUserList(); document.getElementById("userModal").style.display="flex"; }
+function closeUserModal(){ document.getElementById("userModal").style.display="none"; document.getElementById("newUsername").value=''; document.getElementById("newPassword").value=''; }
+function addUser(){
+  const username = document.getElementById("newUsername").value.trim();
+  const password = document.getElementById("newPassword").value.trim();
+  if(!username || !password) return alert("Bitte Benutzername und Passwort eingeben!");
+  if(users[username]) return alert("Benutzer existiert bereits!");
+  users[username] = password;
+  alert("Benutzer erfolgreich hinzugefügt!");
+  document.getElementById("newUsername").value='';
+  document.getElementById("newPassword").value='';
+  updateUserList();
+}
+function updateUserList(){
+  const list = document.getElementById("userList"); list.innerHTML='';
+  for(let u in users){
+    const li = document.createElement("li");
+    li.textContent = u + " ";
+    const btn = document.createElement("button"); btn.textContent="Löschen"; btn.style.marginLeft="10px"; btn.onclick=()=>removeUser(u);
+    li.appendChild(btn); list.appendChild(li);
+  }
+}
+function removeUser(username){ if(username==='boss'){ alert("Boss kann nicht gelöscht werden!"); return;} if(confirm(`Benutzer ${username} wirklich löschen?`)){ delete users[username]; updateUserList(); alert("Benutzer gelöscht!"); } }
+
+// ----- CALENDAR FUNCTIONS -----
+function updateEventColors(){
+  const now = new Date();
+  calendar.getEvents().forEach(ev=>{
+    const isPast = ev.end < now;
+    const came = ev.extendedProps.gekommen;
+    if(isPast && !came){ ev.setProp("backgroundColor","#ff4d4d"); ev.setProp("borderColor","#ff0000"); }
+    else if(isPast && came){ ev.setProp("backgroundColor","#4caf50"); ev.setProp("borderColor","#2e7d32"); }
+    else{ ev.setProp("backgroundColor","#1976d2"); ev.setProp("borderColor","#115293"); }
+  });
+}
+
+// ----- SAVE / FETCH FROM FIREBASE -----
 function saveAppointment() {
   if(!currentUser){ alert("Bitte einloggen!"); return; }
 
@@ -169,35 +190,30 @@ function saveAppointment() {
   const name = document.getElementById("patientName").value.trim();
   const reason = document.getElementById("reason").value.trim();
   const comment = document.getElementById("comment").value.trim();
+
   if(!name || !reason) return alert("Bitte Name und Grund eingeben!");
   if(slotStart < new Date()) { alert("Vergangene Termine können nicht erstellt werden!"); return; }
 
-  const start = slotStart.toISOString();
-  const end = new Date(slotStart.getTime()+15*60000).toISOString();
-  const eventData = { patient:name, reason, comment, gekommen:came, createdBy:currentUser, editedBy:currentUser, start, end };
+  const start = new Date(slotStart.getTime());
+  const end = new Date(start.getTime()+15*60000);
 
-  // Save to Firebase
-  import("https://www.gstatic.com/firebasejs/10.6.0/firebase-database.js").then(({ push, ref }) => {
-    push(ref(getDatabase(), 'appointments'), eventData);
-  });
-
-  // Add to calendar
-  calendar.addEvent({
+  const newEvent = calendar.addEvent({
     title: `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${currentUser}, Geändert von: ${currentUser})`,
-    start: new Date(start),
-    end: new Date(end),
-    extendedProps: eventData
+    start, end,
+    extendedProps: { patient:name, reason:reason, comment:comment, gekommen:came, createdBy:currentUser, editedBy:currentUser }
   });
 
-  closeAddModal();
+  saveToFirebase(newEvent);
   updateEventColors();
+  closeAddModal();
 }
 
-function applyEdit() {
+function applyEdit(){
   const name = document.getElementById("editName").value.trim();
   const reason = document.getElementById("editReason").value.trim();
   const comment = document.getElementById("editComment").value.trim();
   const came = document.getElementById("editCame").checked;
+
   if(!name || !reason) return alert("Bitte alles ausfüllen!");
 
   activeEvent.setProp("title", `${came ? "✔ " : ""}${name} – ${reason} (Erstellt von: ${activeEvent.extendedProps.createdBy}, Geändert von: ${currentUser})`);
@@ -207,62 +223,59 @@ function applyEdit() {
   activeEvent.setExtendedProp("gekommen", came);
   activeEvent.setExtendedProp("editedBy", currentUser);
 
-  // Update Firebase
-  import("https://www.gstatic.com/firebasejs/10.6.0/firebase-database.js").then(({ set, ref, getDatabase }) => {
-    set(ref(getDatabase(), 'appointments/'+activeEvent.extendedProps.firebaseKey), activeEvent.extendedProps);
-  });
-
-  closeEditModal();
+  saveToFirebase(activeEvent);
   updateEventColors();
+  closeEditModal();
 }
 
 function deleteEvent(){
   if(activeEvent.extendedProps.createdBy !== currentUser){
-    alert("Nur der Ersteller kann diesen Termin löschen!"); return;
+    alert("Nur der Ersteller kann diesen Termin löschen!");
+    return;
   }
   if(!confirm("Termin wirklich löschen?")) return;
-  import("https://www.gstatic.com/firebasejs/10.6.0/firebase-database.js").then(({ ref, getDatabase, remove }) => {
-    remove(ref(getDatabase(), 'appointments/'+activeEvent.extendedProps.firebaseKey));
-  });
+  const key = activeEvent.extendedProps.key;
+  if(key) db.ref('appointments/'+key).remove();
   activeEvent.remove();
+  updateEventColors();
   closeEditModal();
 }
 
-/* ----- USER MANAGEMENT ----- */
-function openUserManagementModal(){ updateUserList(); document.getElementById("userModal").style.display="flex"; }
-function closeUserModal(){ document.getElementById("userModal").style.display="none"; document.getElementById("newUsername").value=''; document.getElementById("newPassword").value=''; }
-function addUser(){
-  const username = document.getElementById("newUsername").value.trim();
-  const password = document.getElementById("newPassword").value.trim();
-  if(!username || !password) return alert("Bitte Benutzername und Passwort eingeben!");
-  if(users[username]) return alert("Benutzer existiert bereits!");
-  users[username] = password;
-  document.getElementById("newUsername").value=''; document.getElementById("newPassword").value='';
-  updateUserList();
-}
-function updateUserList(){
-  const list = document.getElementById("userList");
-  list.innerHTML = '';
-  for(let u in users){
-    const li = document.createElement("li");
-    li.textContent = u + " ";
-    const btn = document.createElement("button");
-    btn.textContent = "Löschen";
-    btn.style.marginLeft = "10px";
-    btn.onclick = () => removeUser(u);
-    li.appendChild(btn);
-    list.appendChild(li);
-  }
-}
-function removeUser(username){
-  if(username === 'boss') { alert("Boss kann nicht gelöscht werden!"); return; }
-  if(confirm(`Benutzer ${username} wirklich löschen?`)){
-    delete users[username];
-    updateUserList();
-  }
+// --- Firebase save/load ---
+function saveToFirebase(event){
+  if(!event) return;
+  const key = event.extendedProps.key || db.ref('appointments').push().key;
+  db.ref('appointments/'+key).set({
+    patient: event.extendedProps.patient,
+    reason: event.extendedProps.reason,
+    comment: event.extendedProps.comment,
+    gekommen: event.extendedProps.gekommen,
+    start: event.start.toISOString(),
+    end: event.end.toISOString(),
+    createdBy: event.extendedProps.createdBy,
+    editedBy: event.extendedProps.editedBy,
+    key: key
+  });
+  event.setExtendedProp("key", key);
 }
 
-/* ----- CALENDAR ----- */
+function loadFromFirebase(callback){
+  db.ref('appointments').once('value', snapshot=>{
+    snapshot.forEach(child=>{
+      const ev = child.val();
+      calendar.addEvent({
+        title: `${ev.gekommen ? "✔ " : ""}${ev.patient} – ${ev.reason} (Erstellt von: ${ev.createdBy}, Geändert von: ${ev.editedBy})`,
+        start: new Date(ev.start),
+        end: new Date(ev.end),
+        extendedProps: ev
+      });
+    });
+    updateEventColors();
+    if(callback) callback();
+  });
+}
+
+// ----- INIT CALENDAR -----
 document.addEventListener("DOMContentLoaded", function() {
   document.getElementById("loginModal").style.display="flex";
 
@@ -274,69 +287,35 @@ document.addEventListener("DOMContentLoaded", function() {
     headerToolbar: { left:"prev,next today", center:"title", right:"dayGridMonth,timeGridWeek,timeGridDay" },
     buttonText: { today:"Aktuell", month:"Monat", week:"Woche", day:"Tag" },
     selectable: false,
-
-    dateClick: function(info){
-      if(!currentUser) { alert("Bitte zuerst einloggen!"); return; }
-      calendar.changeView('timeGridDay', info.dateStr);
-    },
-
-    viewDidMount: function(info){
-      calendar.setOption('selectable', info.view.type !== "dayGridMonth");
-    },
-
-    select: function(info){
-      if(!currentUser){ alert("Bitte zuerst einloggen!"); return; }
-      slotStart = info.start;
-      if(slotStart < new Date()) { alert("Vergangene Termine können nicht erstellt werden!"); return; }
-      openAddModal();
-    },
-
-    eventClick: function(info){
-      if(!currentUser){ alert("Bitte zuerst einloggen!"); return; }
-      if(calendar.view.type !== 'dayGridMonth') openEditModal(info.event);
-    },
-
+    dateClick: function(info){ if(!currentUser){ alert("Bitte einloggen!"); return;} calendar.changeView('timeGridDay', info.dateStr); },
+    viewDidMount: function(info){ calendar.setOption('selectable', info.view.type!=='dayGridMonth'); },
+    select: function(info){ if(!currentUser){ alert("Bitte einloggen!"); return;} slotStart=info.start; if(slotStart<new Date()){ alert("Vergangene Termine nicht möglich!"); return;} openAddModal(); },
+    eventClick: function(info){ if(!currentUser){ alert("Bitte einloggen!"); return;} if(calendar.view.type!=='dayGridMonth') openEditModal(info.event); },
     eventDidMount: function(info){
       const ev = info.event;
-      const tooltip = `Erstellt von: ${ev.extendedProps.createdBy || ''}\nGeändert von: ${ev.extendedProps.editedBy || ''}${ev.extendedProps.comment ? "\nKommentar: "+ev.extendedProps.comment : ""}`;
+      let tooltip = `Erstellt von: ${ev.extendedProps.createdBy}\nGeändert von: ${ev.extendedProps.editedBy}`;
+      if(ev.extendedProps.comment) tooltip += `\nKommentar: ${ev.extendedProps.comment}`;
       info.el.setAttribute('title', tooltip);
 
       if(calendar.view.type==="dayGridMonth"){
         const dot = document.createElement('span'); dot.className='fc-event-dot';
         const now = new Date();
-        const isPast = ev.end < now; const came = ev.extendedProps.gekommen;
-        dot.style.backgroundColor = isPast ? (came ? "#4caf50" : "#ff4d4d") : "#1976d2";
+        const isPast = ev.end < now;
+        const came = ev.extendedProps.gekommen;
+        if(isPast && !came) dot.style.backgroundColor="#ff4d4d";
+        else if(isPast && came) dot.style.backgroundColor="#4caf50";
+        else dot.style.backgroundColor="#1976d2";
         info.el.prepend(dot);
       }
     },
-
-    slotDuration: "00:15:00",
-    slotMinTime: "08:00:00",
-    slotMaxTime: "18:00:00",
-    allDaySlot: false
+    slotDuration:"00:15:00",
+    slotMinTime:"08:00:00",
+    slotMaxTime:"18:00:00",
+    allDaySlot:false
   });
 
   calendar.render();
-
-  // Fetch appointments from Firebase
-  import("https://www.gstatic.com/firebasejs/10.6.0/firebase-database.js").then(({ ref, onValue, getDatabase }) => {
-    const dbRef = ref(getDatabase(), 'appointments');
-    onValue(dbRef, snapshot => {
-      calendar.getEvents().forEach(e => e.remove()); // clear
-      snapshot.forEach(child => {
-        const ev = child.val();
-        ev.firebaseKey = child.key;
-        calendar.addEvent({
-          title: `${ev.gekommen ? "✔ " : ""}${ev.patient} – ${ev.reason} (Erstellt von: ${ev.createdBy}, Geändert von: ${ev.editedBy})`,
-          start: new Date(ev.start),
-          end: new Date(ev.end),
-          extendedProps: ev
-        });
-      });
-      updateEventColors();
-    });
-  });
-
+  loadFromFirebase();
   setInterval(updateEventColors, 60000);
 });
 </script>
